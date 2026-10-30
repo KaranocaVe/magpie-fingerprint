@@ -601,6 +601,19 @@ export async function startServer(input: Options = {}) {
           if (req.method !== 'GET' && req.method !== 'HEAD')
             return new Response('Method not allowed', { status: 405 });
           if (url.pathname === '/' || url.pathname === '/index.html') {
+            const uiOrigin = url.searchParams.get('uiOrigin');
+            if (uiOrigin) {
+              const parsed = new URL(uiOrigin);
+              if (
+                !['http:', 'https:'].includes(parsed.protocol) ||
+                parsed.hostname.includes('*') ||
+                parsed.origin !== uiOrigin
+              )
+                throw new Error('Invalid UI origin.');
+            }
+            const connectSources = [
+              ...new Set([`http://${host}`, ...(uiOrigin ? [uiOrigin] : [])]),
+            ];
             let html = await readFile(join(uiDir, 'index.html'), 'utf8').catch(
               () =>
                 '<!doctype html><title>Build required</title><p>Run bun run build to create the Fingerprint interface.</p>',
@@ -622,10 +635,10 @@ export async function startServer(input: Options = {}) {
                 'cache-control': 'no-store',
                 'referrer-policy': 'no-referrer',
                 'x-content-type-options': 'nosniff',
-                // WebKit does not match connect-src 'self' inside Magpie's
-                // opaque-origin sandbox. Host was validated above; name only
-                // this listener explicitly, while retaining 'self' for proxies.
-                'content-security-policy': `default-src 'self'; connect-src 'self' http://${host}; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'`,
+                // Opaque sandbox origins cannot reliably match 'self'. The
+                // launcher supplies the HTTP(S) origin of Magpie's proxy;
+                // it affects this document's CSP only, never API admission.
+                'content-security-policy': `default-src 'self'; connect-src 'self' ${connectSources.join(' ')}; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'`,
               },
             });
           }

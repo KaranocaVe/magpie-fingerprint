@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { options, type Options } from './config';
-export const VERSION = '0.1.2';
+export const VERSION = '0.2.0';
 export function serviceIdentity(input: Options = {}) {
   const opt = options(input);
   return {

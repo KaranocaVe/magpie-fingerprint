@@ -1,6 +1,6 @@
 {
   "name": "magpie-fingerprint",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Model fingerprint diagnostics for Magpie, powered by lm-detector",
   "type": "module",
   "license": "MIT",

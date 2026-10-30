@@ -14,7 +14,8 @@ authentication.
 - Follow live sample counts, cancel work, and inspect the actual response route.
 - Compare ranked candidates, including partial and unscorable outcomes.
 - Keep raw replies and data versions in local history; export or copy JSON.
-- Chinese/English interface, light/dark/system themes, and narrow-screen layouts.
+- Magpie's native page bridge, controls and design tokens; follows the host's theme and language.
+- Compact model lists, keyboard-accessible view tabs, and narrow-screen layouts.
 
 ## Install from GitHub
 

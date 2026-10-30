@@ -14,9 +14,23 @@ desktop window it is reached at `http://127.0.0.1:<port>`; in `magpie web`,
 Magpie supplies `magpie.service`, a tokenized reverse-proxy URL. The service
 does not expose the gateway listener. Its authenticated API accepts its local
 page and the opaque `Origin: null` used by Magpie's sandbox, and rejects unrelated origins.
-The page CSP explicitly allows connections to the validated local listener:
-native WebKit does not match `connect-src 'self'` in this opaque-origin frame.
-The proxy path retains `'self'`; the bearer token and Host/Origin checks still apply.
+The page CSP explicitly allows connections to the validated local listener and,
+when proxied, the HTTP(S) origin supplied by the page launcher. Opaque sandbox
+frames cannot reliably match `connect-src 'self'`. The launcher origin changes
+only the document policy; the API bearer token and Host/Origin checks still apply.
+
+## UI integration
+
+The service page reconnects to Magpie using the upstream page bridge, vendored
+with its MIT notice. Magpie supplies live theme tokens and language through
+`hello` and `theme` messages. The interface uses the upstream base control
+styles and a small selection of Magpie's list, group and segmented-control CSS.
+It adds no sidebar or duplicate application header inside the plugin frame.
+Standalone mode keeps its own theme and language controls.
+
+The iframe remains isolated: the bridge exchanges messages with its parent;
+it does not access the parent DOM or load private host scripts. The pinned
+upstream revision is documented in `THIRD_PARTY_NOTICES.md`.
 
 ## Gateway reads
 

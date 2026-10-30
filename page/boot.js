@@ -19,6 +19,9 @@
     service = `http://127.0.0.1:${port}/`;
   }
   const url = new URL(service, location.href);
+  // Magpie web proxies this service under its own origin. A sandboxed frame
+  // needs that concrete origin in connect-src; 'self' can resolve to null.
+  url.searchParams.set('uiOrigin', url.origin);
   if (theme) {
     url.searchParams.set('theme', theme.dark ? 'dark' : 'light');
     if (theme.lang) url.searchParams.set('lang', theme.lang);

@@ -71,6 +71,26 @@ test('demo is explicitly identified; catalog and history never pretend to be mea
   expect(boot.models.length).toBeGreaterThan(0);
   expect(boot.jobs.every((j: any) => j.demo === true)).toBe(true);
 });
+test('names the Magpie web proxy origin in sandbox CSP without accepting policy injection', async () => {
+  const proxy = 'https://magpie.example:9443';
+  const page = await fetch(`${base}/?uiOrigin=${encodeURIComponent(proxy)}`);
+  expect(page.headers.get('content-security-policy')).toContain(
+    `connect-src 'self' http://127.0.0.1:${service.port} ${proxy}`,
+  );
+  for (const invalid of [
+    'not-an-origin',
+    'http://*',
+    'https://*.example.com',
+    'https://example.com; script-src *',
+    'https://example.com/path',
+    'https://u:p@example.com',
+    'data:text/html,hello',
+    'https://example.com/?x=1',
+  ]) {
+    expect((await fetch(`${base}/?uiOrigin=${encodeURIComponent(invalid)}`)).status).toBe(400);
+  }
+  expect((await api('bootstrap', { headers: { origin: proxy } })).status).toBe(403);
+});
 test('creates one batch, streams snapshots, cancels, exports and deletes it', async () => {
   const config = {
     targets: [{ model: 'openai/gpt-5.5' }],

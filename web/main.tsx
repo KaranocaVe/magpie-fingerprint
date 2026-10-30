@@ -3,28 +3,25 @@ import { createRoot } from 'react-dom/client';
 import {
   ArrowClockwise,
   CaretDown,
-  Check,
   CheckCircle,
   CircleNotch,
   Clipboard,
   ClockCounterClockwise,
   DownloadSimple,
-  Gauge,
-  GithubLogo,
-  Info,
   Lightning,
   List,
   MagnifyingGlass,
   Moon,
   Monitor,
   Play,
-  SlidersHorizontal,
   Stop,
   Sun,
   Trash,
   WarningCircle,
 } from '@phosphor-icons/react';
 import type { Bootstrap, Job, Model, RunConfig, Target, TargetResult } from '../src/types';
+import { embedded, subscribeTheme } from './magpie';
+import './vendor/magpie-ui.css';
 import './style.css';
 
 declare global {
@@ -69,6 +66,7 @@ const zh = {
   deadline: '超时（秒）',
   estimated: '预计请求',
   live: '实时进度',
+  results: '检测结果',
   candidates: '候选排名',
   details: '样本详情',
   export: '导出 JSON',
@@ -103,6 +101,7 @@ const en = {
   deadline: 'Deadline (sec)',
   estimated: 'Estimated requests',
   live: 'Live progress',
+  results: 'Results',
   candidates: 'Candidate ranking',
   details: 'Sample details',
   export: 'Export JSON',
@@ -116,6 +115,8 @@ const en = {
 };
 
 const terminal = (state: string) => !['queued', 'running'].includes(state);
+const integerInRange = (value: unknown, min: number, max: number) =>
+  Number.isInteger(Number(value)) && Number(value) >= min && Number(value) <= max;
 const stateLabel = (t: typeof zh, state: string) =>
   ({
     completed: t.completed,
@@ -133,21 +134,11 @@ const stateLabel = (t: typeof zh, state: string) =>
     waiting: t === zh ? '等待响应' : 'Waiting',
     streaming: t === zh ? '接收中' : 'Streaming',
   })[state] || state;
-function Logo() {
-  return (
-    <div className="brand-mark">
-      <span className="brand-dot" />
-      <span className="brand-dot" />
-      <span className="brand-dot" />
-      <span className="brand-dot" />
-    </div>
-  );
-}
 function App() {
   const [lang, setLang] = useState<'zh' | 'en'>(() => {
     try {
       return (
-        (localStorage.getItem('fp-lang') as 'zh' | 'en') ||
+        (!embedded && (localStorage.getItem('fp-lang') as 'zh' | 'en')) ||
         (window.__FINGERPRINT__?.lang?.startsWith('en') ? 'en' : 'zh')
       );
     } catch {
@@ -157,7 +148,11 @@ function App() {
   const t = lang === 'zh' ? zh : en;
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(() => {
     try {
-      return (localStorage.getItem('fp-theme') as any) || window.__FINGERPRINT__?.theme || 'system';
+      return (
+        (!embedded && (localStorage.getItem('fp-theme') as any)) ||
+        window.__FINGERPRINT__?.theme ||
+        'system'
+      );
     } catch {
       return (window.__FINGERPRINT__?.theme as 'light' | 'dark') || 'system';
     }
@@ -183,6 +178,10 @@ function App() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const configValid =
+    integerInRange(config.targetParallel, 1, 3) &&
+    integerInRange(config.sampleParallel, 1, 3) &&
+    integerInRange(config.deadlineSeconds, 10, 900);
   useEffect(() => {
     const media = matchMedia('(prefers-color-scheme: dark)');
     const paint = () => {
@@ -192,13 +191,14 @@ function App() {
     paint();
     media.addEventListener('change', paint);
     try {
-      localStorage.setItem('fp-theme', theme);
+      if (!embedded) localStorage.setItem('fp-theme', theme);
     } catch {}
     return () => media.removeEventListener('change', paint);
   }, [theme]);
   useEffect(() => {
+    if (!embedded) document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
     try {
-      localStorage.setItem('fp-lang', lang);
+      if (!embedded) localStorage.setItem('fp-lang', lang);
     } catch {}
   }, [lang]);
   useEffect(() => {
@@ -211,9 +211,16 @@ function App() {
       }
     };
     window.addEventListener('message', onMessage);
-    window.parent.postMessage({ magpie: 1, id: 'fingerprint-hello', method: 'hello' }, '*');
     return () => window.removeEventListener('message', onMessage);
   }, []);
+  useEffect(
+    () =>
+      subscribeTheme((next) => {
+        setTheme(next.dark ? 'dark' : 'light');
+        setLang(next.lang?.startsWith('zh') ? 'zh' : 'en');
+      }),
+    [],
+  );
   const load = async () => {
     setError('');
     try {
@@ -370,94 +377,117 @@ function App() {
     }
   };
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <Logo />
-          <div>
-            <strong>Magpie</strong>
-            <span>Fingerprint</span>
-          </div>
-        </div>
-        <div className="side-nav">
+    <div className={`app-shell ${embedded ? 'embedded' : 'standalone'}`}>
+      {!embedded && <h1 className="standalone-title">Fingerprint</h1>}
+      <div className="page-tools">
+        <nav
+          className="segs"
+          aria-label={lang === 'zh' ? '指纹检测视图' : 'Fingerprint views'}
+          role="tablist"
+          onKeyDown={(e) => {
+            if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+              e.preventDefault();
+              const next =
+                e.key === 'Home'
+                  ? 'detect'
+                  : e.key === 'End'
+                    ? 'history'
+                    : section === 'detect'
+                      ? 'history'
+                      : 'detect';
+              setSection(next);
+              document.getElementById(`tab-${next}`)?.focus();
+            }
+          }}
+        >
           <button
-            className={section === 'detect' ? 'active' : ''}
+            className={`opt ${section === 'detect' ? 'on' : ''}`}
+            id="tab-detect"
+            role="tab"
+            aria-selected={section === 'detect'}
+            aria-controls="fingerprint-panel"
+            tabIndex={section === 'detect' ? 0 : -1}
             onClick={() => setSection('detect')}
           >
-            <Gauge size={19} />
-            <span>{t.detect}</span>
+            {t.detect}
           </button>
           <button
-            className={section === 'history' ? 'active' : ''}
+            className={`opt ${section === 'history' ? 'on' : ''}`}
+            id="tab-history"
+            role="tab"
+            aria-selected={section === 'history'}
+            aria-controls="fingerprint-panel"
+            tabIndex={section === 'history' ? 0 : -1}
             onClick={() => setSection('history')}
           >
-            <ClockCounterClockwise size={19} />
-            <span>{t.history}</span>
-            {history.length > 0 && <em>{history.length}</em>}
+            {t.history}
+            {history.length > 0 && <span className="tab-count">{history.length}</span>}
           </button>
-        </div>
-        <div className="sidebar-foot">
-          <div className="service-dot">
-            <i className={boot?.gateway.reachable ? '' : 'bad'} />
-            {!boot
-              ? error
-                ? t.offline
-                : lang === 'zh'
-                  ? '正在连接…'
-                  : 'Connecting…'
-              : boot.gateway.reachable
-                ? t.ready
-                : t.offline}
-          </div>
+        </nav>
+        <div className="page-status">
+          {boot?.demo ? (
+            <span className="badge">{t.demo}</span>
+          ) : (
+            <span className="service-dot" role="status">
+              <i className={boot?.gateway.reachable ? '' : 'bad'} />
+              {!boot
+                ? error
+                  ? t.offline
+                  : lang === 'zh'
+                    ? '正在连接…'
+                    : 'Connecting…'
+                : boot.gateway.reachable
+                  ? t.ready
+                  : t.offline}
+            </span>
+          )}
           <button
-            className="icon-button"
-            title="GitHub"
-            onClick={() =>
-              window.open(
-                'https://github.com/KaranocaVe/magpie-fingerprint',
-                '_blank',
-                'noopener,noreferrer',
-              )
-            }
+            className="icon icon-button"
+            onClick={load}
+            aria-label={lang === 'zh' ? '刷新模型与检测历史' : 'Refresh models and history'}
+            title={lang === 'zh' ? '刷新' : 'Refresh'}
           >
-            <GithubLogo size={18} />
+            <ArrowClockwise size={15} />
           </button>
+          {!embedded && (
+            <>
+              <button className="text" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
+                {lang === 'zh' ? 'EN' : '中文'}
+              </button>
+              <button
+                className="icon icon-button"
+                aria-label={lang === 'zh' ? `主题：${theme}` : `Theme: ${theme}`}
+                onClick={() =>
+                  setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light')
+                }
+              >
+                {theme === 'system' ? (
+                  <Monitor size={15} />
+                ) : theme === 'dark' ? (
+                  <Moon size={15} />
+                ) : (
+                  <Sun size={15} />
+                )}
+              </button>
+            </>
+          )}
         </div>
-      </aside>
-      <main className="main">
-        <header className="topbar">
-          <div className="mobile-brand">
-            <Logo />
-            <strong>Magpie</strong>
-          </div>
-          <div className="breadcrumb">
-            <span>Magpie</span>
-            <b>/</b>
-            <strong>{section === 'detect' ? t.detect : t.history}</strong>
-          </div>
-          <div className="top-actions">
-            <button className="text-button" onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}>
-              <span className="lang-icon">文</span>
-              {lang === 'zh' ? 'EN' : '中文'}
-            </button>
-            <button
-              className="icon-button"
-              title="Theme"
-              aria-label={lang === 'zh' ? `主题：${theme}` : `Theme: ${theme}`}
-              onClick={() =>
-                setTheme(theme === 'light' ? 'dark' : theme === 'dark' ? 'system' : 'light')
-              }
-            >
-              {theme === 'system' ? (
-                <Monitor size={19} />
-              ) : theme === 'dark' ? (
-                <Moon size={19} />
-              ) : (
-                <Sun size={19} />
-              )}
+      </div>
+      <main
+        className="main"
+        id="fingerprint-panel"
+        role="tabpanel"
+        aria-labelledby={`tab-${section}`}
+      >
+        {error && (
+          <div className="notice error" role="alert">
+            <WarningCircle size={18} />
+            <span>{error}</span>
+            <button onClick={load} aria-label={lang === 'zh' ? '重新连接' : 'Reconnect'}>
+              <ArrowClockwise size={16} />
             </button>
           </div>
-        </header>
+        )}
         {section === 'history' ? (
           <History
             history={history}
@@ -471,60 +501,43 @@ function App() {
           />
         ) : (
           <>
-            <div className="page-head">
-              <div>
-                <p className="eyebrow">MODEL DIAGNOSTICS</p>
-                <h1>{t.detect}</h1>
-                <p className="subhead">
-                  {lang === 'zh'
-                    ? '用同一组挑战，比较不同模型的响应指纹。'
-                    : 'Compare model response fingerprints with a shared set of challenges.'}
-                </p>
-              </div>
-              {boot?.demo ? (
-                <span className="demo-badge">
-                  <Info size={15} />
-                  {t.demo}
+            <div className="intro">
+              <p>
+                {lang === 'zh'
+                  ? '选择模型，用同一组挑战比较响应指纹。'
+                  : 'Select models to compare their fingerprints with shared challenges.'}
+              </p>
+              {boot?.bank && (
+                <span title={boot.bank.builtAt}>
+                  {lang === 'zh' ? '参考库' : 'Reference bank'} · {boot.bank.modelCount ?? '—'}{' '}
+                  {lang === 'zh' ? '个模型' : 'models'}
                 </span>
-              ) : (
-                boot?.bank && (
-                  <span className="bank-badge" title={boot.bank.builtAt}>
-                    {lang === 'zh' ? '参考库' : 'Reference bank'} · {boot.bank.modelCount ?? '—'}{' '}
-                    {lang === 'zh' ? '模型' : 'models'}
-                  </span>
-                )
               )}
             </div>
-            {error && (
-              <div className="notice error">
-                <WarningCircle size={18} />
-                <span>{error}</span>
-                <button onClick={load} aria-label={lang === 'zh' ? '重新连接' : 'Reconnect'}>
-                  <ArrowClockwise size={16} />
-                </button>
-              </div>
-            )}
             {boot?.demo && (
               <div className="notice demo">
-                <Lightning size={18} />
+                <Lightning size={15} />
                 <span>
                   {lang === 'zh'
-                    ? '当前为演示环境，结果带有“示例”标记，不会触碰真实模型凭据。'
-                    : 'Demo mode is active. Results are marked and no model credentials are used.'}
+                    ? '示例数据，可直接试用检测流程。'
+                    : 'Demo data. Try the detection workflow.'}
                 </span>
               </div>
             )}
             <div className="workspace-grid">
-              <section className="panel models-panel">
+              <section className="list panel models-panel">
                 <div className="panel-title">
                   <div>
-                    <h2>{t.model}</h2>
-                    <p>
-                      {selected.length} {t.selected}
-                    </p>
+                    <h2>
+                      {lang === 'zh' ? '选择模型' : 'Models'}{' '}
+                      <span className="section-count">{models.length}</span>
+                    </h2>
                   </div>
+                  <span className="selection-count">
+                    {selected.length} {t.selected}
+                  </span>
                   <button
-                    className="ghost-button"
+                    className="text ghost-button"
                     onClick={() => setSelected([])}
                     disabled={!selected.length}
                   >
@@ -556,24 +569,24 @@ function App() {
                 <div className="model-list">
                   {filtered.length ? (
                     filtered.map((m) => (
-                      <button
-                        className={`model-row ${selected.includes(m.id) ? 'chosen' : ''}`}
+                      <label
+                        className={`row model model-row ${selected.includes(m.id) ? 'selected' : ''}`}
                         key={m.id}
-                        onClick={() => toggle(m.id)}
-                        role="checkbox"
-                        aria-checked={selected.includes(m.id)}
                       >
-                        <span className="check-circle">
-                          {selected.includes(m.id) && <Check size={13} weight="bold" />}
+                        <input
+                          type="checkbox"
+                          aria-label={`${m.name} · ${m.id}`}
+                          checked={selected.includes(m.id)}
+                          onChange={() => toggle(m.id)}
+                        />
+                        <span className="who model-name">
+                          <strong className="name">{m.name}</strong>
+                          <small className="sub">{m.id}</small>
                         </span>
-                        <span className="model-name">
-                          <strong>{m.name}</strong>
-                          <small>
-                            {m.provider} · {m.id}
-                          </small>
+                        <span className="model-endpoint">
+                          {m.nativeEndpoints?.[0]?.replace('/v1/', '') || 'chat'}
                         </span>
-                        <span className="model-endpoint">{m.nativeEndpoints?.[0] || 'chat'}</span>
-                      </button>
+                      </label>
                     ))
                   ) : (
                     <div className="empty-state">
@@ -589,13 +602,11 @@ function App() {
                   )}
                 </div>
               </section>
-              <section className="panel config-panel">
+              <section className="list panel config-panel">
                 <div className="panel-title">
                   <div>
                     <h2>{t.settings}</h2>
-                    <p>{lang === 'zh' ? '本次运行参数' : 'Parameters for this run'}</p>
                   </div>
-                  <SlidersHorizontal size={20} className="muted" />
                 </div>
                 <label>
                   {t.account}
@@ -651,21 +662,26 @@ function App() {
                     </small>
                   </div>
                   <button
-                    className={`switch ${config.strict ? 'on' : ''}`}
+                    className={`lib-switch switch ${config.strict ? 'on' : ''}`}
                     role="switch"
                     aria-label={t.strict}
                     aria-checked={config.strict}
                     onClick={() => setField('strict', !config.strict)}
                   >
-                    <span />
+                    <i />
                   </button>
                 </div>
-                <button className="advanced-toggle" onClick={() => setShowAdvanced(!showAdvanced)}>
+                <button
+                  className="advanced-toggle"
+                  aria-expanded={showAdvanced}
+                  aria-controls="run-advanced"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                >
                   {showAdvanced ? '−' : '+'}{' '}
                   {lang === 'zh' ? '高级并行与超时' : 'Concurrency & deadline'}
                 </button>
                 {showAdvanced && (
-                  <div className="advanced">
+                  <div className="advanced" id="run-advanced">
                     <label>
                       {t.tier}
                       <select
@@ -685,6 +701,7 @@ function App() {
                           type="number"
                           min="1"
                           max="3"
+                          aria-invalid={!integerInRange(config.targetParallel, 1, 3)}
                           value={config.targetParallel}
                           onChange={(e) => setField('targetParallel', e.target.value)}
                         />
@@ -695,6 +712,7 @@ function App() {
                           type="number"
                           min="1"
                           max="3"
+                          aria-invalid={!integerInRange(config.sampleParallel, 1, 3)}
                           value={config.sampleParallel}
                           onChange={(e) => setField('sampleParallel', e.target.value)}
                         />
@@ -705,11 +723,19 @@ function App() {
                           type="number"
                           min="10"
                           max="900"
+                          aria-invalid={!integerInRange(config.deadlineSeconds, 10, 900)}
                           value={config.deadlineSeconds}
                           onChange={(e) => setField('deadlineSeconds', e.target.value)}
                         />
                       </label>
                     </div>
+                    {!configValid && (
+                      <p className="muted-line" role="alert">
+                        {lang === 'zh'
+                          ? '并行数须为 1–3 的整数，超时须为 10–900 的整数秒。'
+                          : 'Parallelism must be an integer from 1–3; deadline must be 10–900 whole seconds.'}
+                      </p>
+                    )}
                   </div>
                 )}
                 <div className="run-footer">
@@ -719,9 +745,10 @@ function App() {
                     <small>3 × {selected.length || 0}</small>
                   </div>
                   <button
-                    className="primary-button"
+                    className="text primary primary-button"
                     disabled={
                       !selected.length ||
+                      !configValid ||
                       starting ||
                       !boot?.bank ||
                       history.some((j) => !terminal(j.state))
@@ -790,8 +817,7 @@ function JobView({
     <section className="results">
       <div className="results-head">
         <div>
-          <div className="eyebrow">RUN {job.id.slice(0, 8)}</div>
-          <h2>{t.live}</h2>
+          <h2>{terminal(job.state) ? t.results : t.live}</h2>
         </div>
         <div className="result-actions">
           <span className={`status ${job.state}`}>
@@ -878,7 +904,7 @@ function JobView({
           <div className="export-head">
             <strong>{t.export}</strong>
             <button
-              className="icon-button"
+              className="icon icon-button"
               aria-label={t === zh ? '关闭导出' : 'Close export'}
               onClick={() => setShowExport(false)}
             >
@@ -887,7 +913,7 @@ function JobView({
           </div>
           <textarea ref={exportArea} aria-label="JSON" autoFocus readOnly value={json} />
           <div>
-            <button className="primary-button" onClick={copy}>
+            <button className="text primary primary-button" onClick={copy}>
               <Clipboard size={16} />{' '}
               {copied ? (t === zh ? '已复制' : 'Copied') : t === zh ? '复制 JSON' : 'Copy JSON'}
             </button>
@@ -926,7 +952,12 @@ function ResultRow({
   const decision = analysis?.decision;
   return (
     <div className={`result-card ${r.state}`}>
-      <button className="result-summary" onClick={toggle}>
+      <button
+        className="result-summary"
+        aria-expanded={expanded}
+        aria-controls={`result-${r.id}`}
+        onClick={toggle}
+      >
         <span className="result-icon">
           {r.state === 'completed' ? (
             <CheckCircle size={20} />
@@ -949,7 +980,7 @@ function ResultRow({
         <CaretDown size={17} className={expanded ? 'rotate' : ''} />
       </button>
       {expanded && (
-        <div className="result-body">
+        <div className="result-body" id={`result-${r.id}`}>
           <div className="candidate-head">
             <h3>{t.candidates}</h3>
             <span>
@@ -1052,31 +1083,27 @@ function History({
 }) {
   return (
     <div className="history-page">
-      <div className="page-head">
-        <div>
-          <p className="eyebrow">ARCHIVE</p>
-          <h1>{t.history}</h1>
-          <p className="subhead">
-            {t === zh
-              ? `本地保存了 ${history.length} 次检测`
-              : `${history.length} runs saved locally`}
-          </p>
-        </div>
-        <button className="ghost-button" onClick={() => location.reload()}>
-          <ArrowClockwise size={16} /> {t === zh ? '刷新' : 'Refresh'}
-        </button>
+      <div className="history-tools">
+        <p>
+          {t === zh
+            ? `本地保存了 ${history.length} 次检测`
+            : `${history.length} runs saved locally`}
+        </p>
       </div>
-      <div className="history-list">
+      <div className="list history-list">
         {history.length ? (
           history.map((j) => (
             <div className="history-row" key={j.id}>
               <button onClick={() => onSelect(j)}>
                 <span className={`history-state ${j.state}`} />
                 <span>
-                  <strong>{j.id.slice(0, 12)}</strong>
+                  <strong>
+                    {j.config.targets[0]?.model || j.id.slice(0, 12)}
+                    {j.config.targets.length > 1 ? ` +${j.config.targets.length - 1}` : ''}
+                  </strong>
                   <small>
                     {new Date(j.createdAt).toLocaleString()} · {j.config.targets.length}{' '}
-                    {t === zh ? '个模型' : 'models'}
+                    {t === zh ? '个模型' : 'models'} · {j.id.slice(0, 8)}
                   </small>
                 </span>
               </button>
@@ -1084,8 +1111,9 @@ function History({
                 {j.demo ? t.demo : stateLabel(t, j.state)}
               </span>
               <button
-                className="icon-button danger-icon"
+                className="icon icon-button danger-icon"
                 title={t === zh ? '删除' : 'Delete'}
+                aria-label={`${t === zh ? '删除检测记录' : 'Delete run'} ${j.id.slice(0, 8)}`}
                 onClick={() => onDelete(j.id)}
               >
                 <Trash size={17} />
