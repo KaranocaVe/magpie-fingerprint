@@ -39,6 +39,32 @@ test('requires bearer token and rejects cross-site origins and rebinding hosts',
     ).headers.get('access-control-allow-headers'),
   ).toContain('Authorization');
 });
+test('allows the native WebKit sandbox to connect only to the validated listener', async () => {
+  for (const host of [`127.0.0.1:${service.port}`, `localhost:${service.port}`]) {
+    const page = await fetch(base, { headers: { host } });
+    const policy = page.headers.get('content-security-policy')!;
+    expect(policy.split(';').map((part) => part.trim())).toContain(
+      `connect-src 'self' http://${host}`,
+    );
+    expect(policy).not.toContain('allow-same-origin');
+  }
+  const preflight = await fetch(`${base}/api/bootstrap`, {
+    method: 'OPTIONS',
+    headers: {
+      origin: 'null',
+      'access-control-request-method': 'GET',
+      'access-control-request-headers': 'authorization',
+    },
+  });
+  expect(preflight.status).toBe(204);
+  expect(preflight.headers.get('access-control-allow-origin')).toBe('null');
+  expect((await api('bootstrap', { headers: { origin: 'null' } })).status).toBe(200);
+  expect(
+    (await fetch(base, { headers: { host: 'attacker.example' } })).headers.has(
+      'content-security-policy',
+    ),
+  ).toBe(false);
+});
 test('demo is explicitly identified; catalog and history never pretend to be measurements', async () => {
   const boot = await (await api('bootstrap')).json();
   expect(boot.demo).toBe(true);

@@ -215,6 +215,7 @@ function App() {
     return () => window.removeEventListener('message', onMessage);
   }, []);
   const load = async () => {
+    setError('');
     try {
       const b = await api<Bootstrap>('api/bootstrap');
       setBoot(b);
@@ -399,9 +400,11 @@ function App() {
           <div className="service-dot">
             <i className={boot?.gateway.reachable ? '' : 'bad'} />
             {!boot
-              ? lang === 'zh'
-                ? '正在连接…'
-                : 'Connecting…'
+              ? error
+                ? t.offline
+                : lang === 'zh'
+                  ? '正在连接…'
+                  : 'Connecting…'
               : boot.gateway.reachable
                 ? t.ready
                 : t.offline}
@@ -496,7 +499,7 @@ function App() {
               <div className="notice error">
                 <WarningCircle size={18} />
                 <span>{error}</span>
-                <button onClick={load}>
+                <button onClick={load} aria-label={lang === 'zh' ? '重新连接' : 'Reconnect'}>
                   <ArrowClockwise size={16} />
                 </button>
               </div>

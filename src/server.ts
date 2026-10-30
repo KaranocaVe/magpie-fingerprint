@@ -622,7 +622,10 @@ export async function startServer(input: Options = {}) {
                 'cache-control': 'no-store',
                 'referrer-policy': 'no-referrer',
                 'x-content-type-options': 'nosniff',
-                'content-security-policy': `default-src 'self'; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'`,
+                // WebKit does not match connect-src 'self' inside Magpie's
+                // opaque-origin sandbox. Host was validated above; name only
+                // this listener explicitly, while retaining 'self' for proxies.
+                'content-security-policy': `default-src 'self'; connect-src 'self' http://${host}; script-src 'self' 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'`,
               },
             });
           }

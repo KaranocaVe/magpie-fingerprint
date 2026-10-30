@@ -14,6 +14,9 @@ desktop window it is reached at `http://127.0.0.1:<port>`; in `magpie web`,
 Magpie supplies `magpie.service`, a tokenized reverse-proxy URL. The service
 does not expose the gateway listener. Its authenticated API accepts its local
 page and the opaque `Origin: null` used by Magpie's sandbox, and rejects unrelated origins.
+The page CSP explicitly allows connections to the validated local listener:
+native WebKit does not match `connect-src 'self'` in this opaque-origin frame.
+The proxy path retains `'self'`; the bearer token and Host/Origin checks still apply.
 
 ## Gateway reads
 
