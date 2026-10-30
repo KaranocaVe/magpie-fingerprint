@@ -410,7 +410,6 @@ export async function startServer(input: Options = {}) {
       port: opt.port,
       idleTimeout: 0,
       async fetch(req) {
-        await initialized;
         const url = new URL(req.url);
         const own = `127.0.0.1:${server.port}`;
         const host = req.headers.get('host');
@@ -434,6 +433,7 @@ export async function startServer(input: Options = {}) {
         if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
         if (url.pathname === '/_fingerprint/health' && req.method === 'GET')
           return json(serviceIdentity(opt), 200, cors);
+        await initialized;
         const api = url.pathname.startsWith('/api/');
         if (api && !equal(req.headers.get('authorization')?.replace(/^Bearer /, '') || '', token))
           return json({ error: 'Unauthorized' }, 401, cors);
