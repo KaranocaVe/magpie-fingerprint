@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startServer } from '../src/server';
@@ -116,4 +116,20 @@ test('bounds chunked request bodies without trusting Content-Length', async () =
   });
   const response = await api('jobs', { method: 'POST', body });
   expect(response.status).toBe(413);
+});
+
+test('a second host cannot repair jobs belonging to the active service', async () => {
+  const job = demoHistory();
+  job.id = 'active-owner-job';
+  job.state = 'running';
+  const path = join(dir, 'demo-jobs', `${job.id}.json`);
+  await writeFile(path, JSON.stringify(job));
+  try {
+    await expect(
+      startServer({ port: service.port, dataDir: dir, uiDir: join(dir, 'ui'), demo: true }),
+    ).rejects.toThrow();
+    expect(JSON.parse(await readFile(path, 'utf8')).state).toBe('running');
+  } finally {
+    await rm(path, { force: true });
+  }
 });

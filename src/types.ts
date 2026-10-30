@@ -34,6 +34,7 @@ export interface Provenance {
   route?: unknown;
   routeError?: string;
   mismatch?: boolean;
+  streamNormalization?: 'chat-done-after-stop';
 }
 export interface TargetResult {
   id: string;

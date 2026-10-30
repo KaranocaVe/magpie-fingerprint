@@ -77,3 +77,15 @@ the job controller. It cannot be reached through the page service proxy.
 The page's relative asset/API URLs also work under Magpie's remote proxy prefix.
 Exports provide JSON text and clipboard/manual-copy fallback because Magpie's
 iframe sandbox can block downloads. Standalone browser users can download a file.
+
+## Multiple Magpie hosts
+
+Desktop and `magpie web` can share a listener when their service protocol and
+configuration match. The remaining host takes over if the owner exits. Different
+configurations or unrelated applications on the port are rejected. After upgrading
+from v0.1.0, turn Fingerprint off and back on once to release its older listener.
+
+For OpenAI-compatible chat streams, a clean EOF after an explicit `stop` is
+normalized with `[DONE]` when the gateway omitted that sentinel. The raw response
+text is unchanged, and provenance records `streamNormalization: chat-done-after-stop`.
+Incomplete finishes, errors, and disconnected streams are never repaired.

@@ -232,6 +232,11 @@ export async function runJob(job: Job, deps: RunDeps): Promise<void> {
           scoreable.map((sample) => ({ text: sample.text, expected_count: sample.expected_count })),
           { strict: job.config.strict },
         );
+      } else if (aborted || cancelled) {
+        result.error =
+          deps.signal.reason instanceof Error
+            ? deps.signal.reason.message
+            : 'Cancelled. This round was not scored.';
       } else if (mismatch) {
         result.error =
           'Provider/model response does not match the requested target; result was not scored.';
@@ -251,9 +256,11 @@ export async function runJob(job: Job, deps: RunDeps): Promise<void> {
     Array.from({ length: Math.min(job.config.targetParallel, job.results.length) }, targetWorker),
   );
   job.finishedAt = new Date().toISOString();
-  if (deps.signal.aborted || job.results.some((result) => result.state === 'cancelled'))
+  if (deps.signal.aborted || job.results.some((result) => result.state === 'cancelled')) {
     job.state = 'cancelled';
-  else if (job.results.some((result) => result.state === 'failed')) job.state = 'failed';
+    if (deps.signal.aborted)
+      job.error = deps.signal.reason instanceof Error ? deps.signal.reason.message : 'Cancelled';
+  } else if (job.results.some((result) => result.state === 'failed')) job.state = 'failed';
   else job.state = 'completed';
   await update(deps);
 }

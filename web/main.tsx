@@ -39,6 +39,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (token()) headers.set('Authorization', `Bearer ${token()}`);
   if (init?.body) headers.set('content-type', 'application/json');
   const r = await fetch(apiUrl(path), { ...init, headers });
+  if (r.status === 401) location.reload();
   if (!r.ok) {
     const data = await r.json().catch(() => null);
     throw new Error(data?.error || `${r.status} ${r.statusText}`);
@@ -241,6 +242,7 @@ function App() {
             headers: { Authorization: `Bearer ${token()}` },
             signal: controller.signal,
           });
+          if (response.status === 401) location.reload();
           if (!response.ok || !response.body)
             throw new Error(`Progress connection: HTTP ${response.status}`);
           const reader = response.body.getReader();
@@ -287,6 +289,11 @@ function App() {
       `${m.name} ${m.id}`.toLowerCase().includes(query.toLowerCase()),
   );
   const selectedModels = models.filter((m) => selected.includes(m.id));
+  const effortChoices =
+    selectedModels[0]?.efforts.filter((effort) =>
+      selectedModels.every((model) => model.efforts.includes(effort)),
+    ) || [];
+  const effort = effortChoices.includes(config.effort) ? config.effort : '';
   const estimate = selected.length * 3;
   const toggle = (id: string) =>
     setSelected((s) =>
@@ -308,7 +315,7 @@ function App() {
     const cfg: RunConfig = {
       targets: selected.map((model) => ({ model, ...(account ? { account } : {}) })),
       api: config.api,
-      effort: config.effort,
+      effort,
       serviceTier: config.serviceTier,
       strict: config.strict,
       targetParallel: Number(config.targetParallel),
@@ -623,14 +630,13 @@ function App() {
                   </label>
                   <label>
                     {t.effort}
-                    <select
-                      value={config.effort}
-                      onChange={(e) => setField('effort', e.target.value)}
-                    >
+                    <select value={effort} onChange={(e) => setField('effort', e.target.value)}>
                       <option value="">Default</option>
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
+                      {effortChoices.map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
                     </select>
                   </label>
                 </div>
@@ -985,7 +991,9 @@ function ResultRow({
                     ? 'Unscorable'
                     : decision === 'not_model'
                       ? 'Not a model reply'
-                      : 'No scored candidates yet.')}
+                      : t === zh
+                        ? '暂未产生可评分候选。'
+                        : 'No scored candidates yet.')}
             </div>
           )}
           {analysis && (

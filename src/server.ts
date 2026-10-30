@@ -6,11 +6,12 @@ import { options, type Options } from './config';
 import { Gateway } from './gateway';
 import { Store } from './store';
 import { boundedText, BodyTooLargeError } from './http';
+import { normalizeChatStream } from './sse';
+import { serviceIdentity, VERSION } from './service-identity';
 import { createJob, runJob } from './detector';
 import { demoModels, demoHistory, demoAnalysis } from './demo';
 import type { Job, Model, Provenance, TargetResult, RunConfig } from './types';
 
-const VERSION = '0.1.0';
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const json = (data: unknown, status = 200, headers: HeadersInit = {}) =>
   Response.json(data, { status, headers });
@@ -33,11 +34,6 @@ export async function startServer(input: Options = {}) {
   const opt = options(input);
   const gateway = new Gateway(opt.gateway, opt.apiKey);
   const store = new Store(join(opt.dataDir, opt.demo ? 'demo-jobs' : 'jobs'));
-  await store.load();
-  if (opt.demo && !store.jobs.size) {
-    const job = demoHistory();
-    store.jobs.set(job.id, job);
-  }
   const token = randomBytes(32).toString('hex');
   const active = new Map<string, AbortController>();
   const tickets = new Map<string, SampleTicket>();
@@ -200,7 +196,14 @@ export async function startServer(input: Options = {}) {
           text = '',
           lineBuffer = '',
           totalBytes = 0;
-        const reader = upstream.body.getReader();
+        const responseBody =
+          result.api === 'chat_completions' &&
+          upstream.headers.get('content-type')?.includes('text/event-stream')
+            ? normalizeChatStream(upstream.body, () => {
+                provenance.streamNormalization = 'chat-done-after-stop';
+              })
+            : upstream.body;
+        const reader = responseBody.getReader();
         let lastEmit = 0;
         const decoder = new TextDecoder();
         const recordChunk = (bytes: Uint8Array) => {
@@ -400,12 +403,14 @@ export async function startServer(input: Options = {}) {
   const uiDir =
     opt.uiDir || resolve(import.meta.dir, import.meta.dir.endsWith('/src') ? '../dist/ui' : 'ui');
   let server: ReturnType<typeof Bun.serve>;
+  let initialized = Promise.resolve();
   try {
     server = Bun.serve({
       hostname: '127.0.0.1',
       port: opt.port,
       idleTimeout: 0,
       async fetch(req) {
+        await initialized;
         const url = new URL(req.url);
         const own = `127.0.0.1:${server.port}`;
         const host = req.headers.get('host');
@@ -427,6 +432,8 @@ export async function startServer(input: Options = {}) {
           'cache-control': 'no-store',
         };
         if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
+        if (url.pathname === '/_fingerprint/health' && req.method === 'GET')
+          return json(serviceIdentity(opt), 200, cors);
         const api = url.pathname.startsWith('/api/');
         if (api && !equal(req.headers.get('authorization')?.replace(/^Bearer /, '') || '', token))
           return json({ error: 'Unauthorized' }, 401, cors);
@@ -651,6 +658,21 @@ export async function startServer(input: Options = {}) {
   } catch (e) {
     transport.stop(true);
     throw e;
+  }
+  initialized = (async () => {
+    // Only the process that owns the listening port may repair persisted jobs.
+    await store.load();
+    if (opt.demo && !store.jobs.size) {
+      const job = demoHistory();
+      store.jobs.set(job.id, job);
+    }
+  })();
+  try {
+    await initialized;
+  } catch (error) {
+    server.stop(true);
+    transport.stop(true);
+    throw error;
   }
   return {
     port: server.port,
