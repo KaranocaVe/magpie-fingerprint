@@ -41,7 +41,7 @@
       "file": "page/index.html",
       "icon": "page/icon.svg",
       "service": {
-        "port": 3488,
+        "port": 4388,
         "option": "port"
       }
     },
@@ -59,7 +59,7 @@
       }
     ],
     "options": {
-      "port": 3488
+      "port": 4388
     },
     "permissions": []
   },
