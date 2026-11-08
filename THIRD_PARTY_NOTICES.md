@@ -135,3 +135,14 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Vendored detector SDK provenance
+
+`vendor/lmfpd-sdk/index.js`, `types/`, `LICENSE`, `README.md` and `package.json`
+are copied unchanged from the npm `lmfpd-sdk@0.2.0` package, published from
+[Ikaleio/lm-detector](https://github.com/Ikaleio/lm-detector) commit
+`1e58ed83c1cde17f88cba89560ad4d083042ae92`. `index.d.ts` is a local re-export
+of the upstream declarations. Its runtime bundle includes `fzstd`; both MIT
+notices are preserved above. The SDK is vendored so repository tests and plugin
+installation require no dependency installation. The reference bank is fetched
+only on explicit download or an uncached run, or supplied locally with `bankSource`.

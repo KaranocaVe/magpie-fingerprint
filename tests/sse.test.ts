@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { generateChallenges, requestSample } from 'lmfpd-sdk';
+import { generateChallenges, requestSample } from '../vendor/lmfpd-sdk/index.js';
 import { normalizeChatStream } from '../src/sse';
 
 test('real SDK accepts a clean chat stop without sentinel, but still rejects incomplete endings', async () => {

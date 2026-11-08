@@ -14,9 +14,11 @@ desktop window it is reached at `http://127.0.0.1:<port>`; in `magpie web`,
 Magpie supplies `magpie.service`, a tokenized reverse-proxy URL. The service
 does not expose the gateway listener. Its authenticated API accepts its local
 page and the opaque `Origin: null` used by Magpie's sandbox, and rejects unrelated origins.
-The page CSP explicitly allows connections to the validated local listener and,
-when proxied, the HTTP(S) origin supplied by the page launcher. Opaque sandbox
-frames cannot reliably match `connect-src 'self'`. The launcher origin changes
+The page CSP names the validated local listener and, when proxied, the HTTP(S)
+origin supplied by the page launcher in every fetch directive (default, script,
+style, image and connect). Opaque sandbox frames cannot reliably match `'self'`:
+WebKitGTK, magpie's Linux window, matches nothing to it there, so a policy of
+`'self'` alone loads no script and the page stays blank. The launcher origin changes
 only the document policy; the API bearer token and Host/Origin checks still apply.
 
 ## UI integration
@@ -37,21 +39,31 @@ upstream revision is documented in `THIRD_PARTY_NOTICES.md`.
 The service reads `GET /v1/models` for the text model catalog and
 `GET /v1/magpie/quotas?kept=1` for cached subscription account labels. The
 `kept=1` form does not ask vendors for a fresh quota reading. Account rows are
-projected to provider, user id, and display name only; upstream credentials,
-balances, and raw quota records are never sent to the browser.
+projected to provider, user id, and display name (the account's alias, else
+its user) only; upstream credentials, balances, and raw quota records are never
+sent to the browser.
 
 Gateway authentication uses `Authorization: Bearer <key>` when an API key is
 configured. Loopback Magpie normally needs no key. A remote gateway must be
 shared and requires its enabled gateway key. `X-Magpie-Account` can pin a
 gateway request to one account id or signed-in user, but is only meaningful to
-Magpie and is never forwarded upstream.
+Magpie and is never forwarded upstream. A header value is ASCII, so a user that
+isn't (`北冥`) is sent percent-encoded (`encodeURIComponent`), which Magpie
+v0.1.2658 and later read back; an ASCII user is sent as it is.
+
+## Job files
+
+Each batch is saved as `jobs/<id>.json` under the data directory. A pinned
+target keeps `account` (Magpie's id for the account: its user, an email or a
+login, which routing matches and rests it by) and, when the catalog listed it,
+`accountName`, in `config.targets[]` and `results[].target`. When every target
+is pinned to the same account, `config.account` and `config.accountName` name
+it too. Jobs saved before 0.2.2 have none of these fields and load as they were.
 
 ## Local development
 
 ```sh
-bun install --frozen-lockfile
-bun run check
-bun run build
+bun run rebuild
 bun start
 ```
 
@@ -69,8 +81,10 @@ bun src/cli.ts --demo
 
 Demo mode never calls a real gateway or model. Numeric first-release detection
 uses the pinned `lmfpd-sdk` 0.2.0 request/analyze flow; the SDK has no public
-tokenizer API. Each job uses a pinned reference version, three common
-challenges per batch, bounded concurrency, and explicit cancellation/limits.
+tokenizer API. Each job retains its loaded reference snapshot and records
+`builtAt`; remote data is not version-pinned or verified against a locally
+pinned hash. Jobs use three common challenges per batch, bounded concurrency,
+and explicit cancellation/limits.
 The detector reports model-family evidence, not identity authentication.
 
 ## Options and persistence
@@ -79,6 +93,15 @@ Plugin options accept `port`, `gateway`, `apiKey`, `dataDir`, and `bankSource`.
 Keep the API key in the service environment when possible. `MAGPIE_FINGERPRINT_DATA_DIR`
 overrides persistence; `MAGPIE_FINGERPRINT_BANK_SOURCE` can point to a local bank
 directory for fully offline scoring. Each batch retains its loaded detector instance.
+
+Opening/refreshing the page reads only the configured gateway and local history.
+`POST /api/bank/download` is the explicit download/refresh action; a valid
+`POST /api/jobs` also loads data if none is usable. Cached snapshots have no
+background refresh, including after the SDK default 24-hour TTL. Downloads use
+`https://lm.ikale.io/data/`, falling back to
+`https://cdn.jsdmirror.com/npm/lmfpd-data@latest/`. These hosts see the client IP
+but receive no provider credentials, model ids, prompts or replies. A custom
+`bankSource` replaces these defaults.
 
 Jobs are stored as atomic JSON files with owner-only permissions. The current limit
 is 200 batches, 24 targets per batch, three concurrent targets and three concurrent
@@ -99,8 +122,11 @@ iframe sandbox can block downloads. Standalone browser users can download a file
 
 Desktop and `magpie web` can share a listener when their service protocol and
 configuration match. The remaining host takes over if the owner exits. Different
-configurations or unrelated applications on the port are rejected. After upgrading
-from v0.1.0, turn Fingerprint off and back on once to release its older listener.
+configurations or unrelated applications on the port are rejected. The public
+health digest uses HMAC-SHA256 with an owner-only, random per-install key; the
+gateway API key still participates in matching. If the install cannot persist
+that key, processes refuse to share a listener. After upgrading, turn Fingerprint
+off and back on once to release an older listener.
 
 For OpenAI-compatible chat streams, a clean EOF after an explicit `stop` is
 normalized with `[DONE]` when the gateway omitted that sentinel. The raw response

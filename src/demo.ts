@@ -1,5 +1,5 @@
 import type { Analysis, Job, Model, RunConfig } from './types';
-import { generateChallenges } from 'lmfpd-sdk';
+import { generateChallenges } from '../vendor/lmfpd-sdk/index.js';
 export const demoModels: Model[] = [
   {
     id: 'anthropic/claude-sonnet-4.6',
