@@ -3,6 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <!-- Last resort for windows where this page's own scripts can never load:
+         Magpie's WebView2 window serves plugin pages from a virtual host, and a
+         sandboxed frame that runs out of process cannot fetch its subresources,
+         so boot.js never runs and the frame is killed at 10 s with "page didn't
+         answer" (yetone/magpie#2787, magpie-fingerprint#2). A meta refresh is
+         the only navigation available without JavaScript. When the scripts do
+         load, boot.js has already navigated away before this can fire. -->
+    <meta
+      http-equiv="refresh"
+      content="6;url=http://127.0.0.1:3488/?uiOrigin=http://127.0.0.1:3488"
+    />
     <title>Fingerprint</title>
     <style>
       :root {
